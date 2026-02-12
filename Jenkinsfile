@@ -8,6 +8,7 @@ pipeline {
 
     stages {
 
+        // -------------------------------
         stage('Checkout Code') {
             steps {
                 git branch: 'main',
@@ -15,13 +16,17 @@ pipeline {
             }
         }
 
+        // -------------------------------
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
-                sh 'docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest'
+                echo "Building Docker image $IMAGE_NAME:$IMAGE_TAG"
+                sh '''
+                    docker build -t $IMAGE_NAME:$IMAGE_TAG -t $IMAGE_NAME:latest .
+                '''
             }
         }
 
+        // -------------------------------
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(
@@ -30,26 +35,41 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh '''
-                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
-                    docker push $IMAGE_NAME:$IMAGE_TAG
-                    docker push $IMAGE_NAME:latest
+                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        docker push $IMAGE_NAME:$IMAGE_TAG
+                        docker push $IMAGE_NAME:latest
                     '''
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        // -------------------------------
+        stage('Deploy to GREEN EC2') {
             steps {
-                sh '''
-                ssh -o StrictHostKeyChecking=no ec2-user@13.232.132.126 "
-                    docker stop app || true
-                    docker rm app || true
-                    docker pull rajkumar179/app3:latest
-                    docker run -d -p 80:3000 --name app rajkumar179/app3:latest
-                "
-                '''
+                sshagent(['green-ec2']) {
+                    sh '''
+                        ssh -o StrictHostKeyChecking=no ec2-user@13.235.243.150 "
+                            echo 'Pulling latest image...'
+                            docker pull $IMAGE_NAME:latest &&
+                            echo 'Stopping old container...'
+                            docker stop app-green || true &&
+                            docker rm app-green || true &&
+                            echo 'Starting new container...'
+                            docker run -d -p 80:3000 --name app-green $IMAGE_NAME:latest
+                        "
+                    '''
+                }
             }
         }
 
+    }
+
+    post {
+        success {
+            echo "Pipeline completed successfully! ✅"
+        }
+        failure {
+            echo "Pipeline failed! ❌ Check logs."
+        }
     }
 }
