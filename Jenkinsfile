@@ -2,10 +2,12 @@ pipeline {
     agent any
 
     environment {
-        IMAGE = "rajkumar179/app3:latest"
+        IMAGE_NAME = "rajkumar179/app3"
+        IMAGE_TAG = "${BUILD_NUMBER}"
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
                 git branch: 'main',
@@ -15,19 +17,24 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t $IMAGE .'
+                sh 'docker build -t $IMAGE_NAME:$IMAGE_TAG .'
+                sh 'docker tag $IMAGE_NAME:$IMAGE_TAG $IMAGE_NAME:latest'
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Push to Docker Hub') {
             steps {
-                sh '''
-                ssh ubuntu@APP_EC2_IP "
-                docker stop app || true
-                docker rm app || true
-                docker run -d -p 80:3000 --name app $IMAGE
-                "
-                '''
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    docker push $IMAGE_NAME:latest
+                    '''
+                }
             }
         }
     }
