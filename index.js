@@ -5,7 +5,7 @@ const PORT = 3000;
 
 // Home route
 app.get('/', (req, res) => {
-    res.send('Hello from Node.js app anjali loves raj');
+    res.send('Hello from Node.js app rahul  loves raj');
 });
 
 // API route
